@@ -4,9 +4,9 @@ import threading
 import json
 import time
 
-width = 1200  # Match server width
-height = 900  # Match server height
-PLAYER_SIZE = 25  # Match server player size
+width = 1200
+height = 900
+PLAYER_SIZE = 25
 pygame.init()
 pygame.font.init()
 win = pygame.display.set_mode((width, height))
@@ -22,6 +22,11 @@ chat_messages = []
 grid_cells = {}
 current_message = ""
 chat_active = False
+server_message = {
+    'text': '',
+    'color': (255, 255, 255),
+    'end_time': 0
+}
 font = pygame.font.SysFont('Arial', 16)
 MOVEMENT_INTERPOLATION_SPEED = 0.15
 
@@ -55,6 +60,17 @@ def receive():
                         chat_messages.append((message, color_hex))
                         if len(chat_messages) > 10:
                             chat_messages.pop(0)
+                elif line.startswith('/popup '):
+                    parts = line.split(' ', 2)
+                    if len(parts) == 3:
+                        color_hex = parts[1]
+                        message = parts[2]
+                        r = int(color_hex[1:3], 16)
+                        g = int(color_hex[3:5], 16)
+                        b = int(color_hex[5:7], 16)
+                        server_message['text'] = message
+                        server_message['color'] = (r, g, b)
+                        server_message['end_time'] = time.time() + 5
                 elif line.startswith('[CHAT]') or line.startswith('[SERVER]') or line.startswith('[Gem Game]'):
                     chat_messages.append((line, None))
                     if len(chat_messages) > 10:
@@ -82,7 +98,7 @@ def update_visual_positions():
 def redrawWindow():
     win.fill((255, 255, 255))
     
-    grid_size = 25  # Match server grid size
+    grid_size = 25
     
     for y in range(0, height, grid_size):
         for x in range(0, width, grid_size):
@@ -142,6 +158,32 @@ def redrawWindow():
         else:
             text = font.render(msg_data, True, (0, 0, 0))
         win.blit(text, (10, height - 200 + i * 20))
+
+    current_time = time.time()
+    if server_message['text'] and current_time < server_message['end_time']:
+        popup_font = pygame.font.SysFont('Arial', 24, bold=True)
+        popup_text = popup_font.render(server_message['text'], True, (0, 0, 0))
+        
+        padding = 30
+        popup_surface = pygame.Surface((popup_text.get_width() + padding * 2, 
+                                      popup_text.get_height() + padding), 
+                                     pygame.SRCALPHA)
+        
+        pygame.draw.rect(popup_surface, (255, 255, 255, 230), 
+                        (0, 0, popup_surface.get_width(), popup_surface.get_height()), 
+                        border_radius=10)
+        
+        pygame.draw.rect(popup_surface, (0, 0, 0, 200), 
+                        (0, 0, popup_surface.get_width(), popup_surface.get_height()), 
+                        3, border_radius=10)
+        
+        popup_surface.blit(popup_text, 
+                         (popup_surface.get_width()//2 - popup_text.get_width()//2, 
+                          popup_surface.get_height()//2 - popup_text.get_height()//2))
+        
+        win.blit(popup_surface, 
+                (width//2 - popup_surface.get_width()//2, 
+                 40))
     
     if chat_active and current_message:
         text = font.render("> " + current_message, True, (0, 0, 0))
@@ -178,6 +220,7 @@ def main():
                         current_message = ""
                         chat_active = False
                     else:
+                        movement_buffer = {"left": False, "right": False, "up": False, "down": False}
                         chat_active = True
                 elif event.key == pygame.K_ESCAPE:
                     chat_active = False
@@ -186,30 +229,29 @@ def main():
                     current_message = current_message[:-1]
                 elif chat_active:
                     current_message += event.unicode
-                
-                # WASD movement controls
-                if event.key == pygame.K_a:
-                    movement_buffer["left"] = True
-                if event.key == pygame.K_d:
-                    movement_buffer["right"] = True
-                if event.key == pygame.K_w:
-                    movement_buffer["up"] = True
-                if event.key == pygame.K_s:
-                    movement_buffer["down"] = True
-                
-                # Diagonal movement with QEZX for better control
-                if event.key == pygame.K_q:  # Up-Left
-                    movement_buffer["up"] = True
-                    movement_buffer["left"] = True
-                if event.key == pygame.K_e:  # Up-Right
-                    movement_buffer["up"] = True
-                    movement_buffer["right"] = True
-                if event.key == pygame.K_z:  # Down-Left
-                    movement_buffer["down"] = True
-                    movement_buffer["left"] = True
-                if event.key == pygame.K_c:  # Down-Right
-                    movement_buffer["down"] = True
-                    movement_buffer["right"] = True
+            
+                if not chat_active:
+                    if event.key == pygame.K_a:
+                        movement_buffer["left"] = True
+                    if event.key == pygame.K_d:
+                        movement_buffer["right"] = True
+                    if event.key == pygame.K_w:
+                        movement_buffer["up"] = True
+                    if event.key == pygame.K_s:
+                        movement_buffer["down"] = True
+                    
+                    if event.key == pygame.K_q:
+                        movement_buffer["up"] = True
+                        movement_buffer["left"] = True
+                    if event.key == pygame.K_e:
+                        movement_buffer["up"] = True
+                        movement_buffer["right"] = True
+                    if event.key == pygame.K_z:
+                        movement_buffer["down"] = True
+                        movement_buffer["left"] = True
+                    if event.key == pygame.K_c:
+                        movement_buffer["down"] = True
+                        movement_buffer["right"] = True
             
             if event.type == pygame.KEYUP:
                 if event.key == pygame.K_a:
@@ -220,19 +262,18 @@ def main():
                     movement_buffer["up"] = False
                 if event.key == pygame.K_s:
                     movement_buffer["down"] = False
-                # Reset diagonal movement keys
-                if event.key == pygame.K_q or event.key == pygame.K_z:  # Left diagonals
+                if event.key == pygame.K_q or event.key == pygame.K_z:
                     if not pygame.key.get_pressed()[pygame.K_LEFT] and not pygame.key.get_pressed()[pygame.K_a]:
                         movement_buffer["left"] = False
                     if not pygame.key.get_pressed()[pygame.K_UP] and not pygame.key.get_pressed()[pygame.K_w]:
                         movement_buffer["up"] = False
-                if event.key == pygame.K_e or event.key == pygame.K_c:  # Right diagonals
+                if event.key == pygame.K_e or event.key == pygame.K_c:
                     if not pygame.key.get_pressed()[pygame.K_RIGHT] and not pygame.key.get_pressed()[pygame.K_d]:
                         movement_buffer["right"] = False
                     if not pygame.key.get_pressed()[pygame.K_DOWN] and not pygame.key.get_pressed()[pygame.K_s]:
                         movement_buffer["down"] = False
         
-        if current_time - last_movement_time > movement_cooldown:
+        if not chat_active and current_time - last_movement_time > movement_cooldown:
             if movement_buffer["left"] and movement_buffer["up"]:
                 s.sendall(b"/move upleft\n")
                 last_movement_time = current_time

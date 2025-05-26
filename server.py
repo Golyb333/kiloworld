@@ -14,10 +14,10 @@ class GameServer:
         
         self.MIN_COMMAND_INTERVAL = 30
         self.CHAT_LAST_MESSAGE_TIME = 0
-        self.GAME_WIDTH = 1200  # Double the width
-        self.GAME_HEIGHT = 900  # Double the height
-        self.PLAYER_SIZE = 25    # Slightly smaller player
-        self.PLAYER_VEL = 5      # Slightly faster movement to compensate for larger world
+        self.GAME_WIDTH = 1200
+        self.GAME_HEIGHT = 900
+        self.PLAYER_SIZE = 25
+        self.PLAYER_VEL = 5
         self.MAX_HP = 30
         self.last_command_time = {}
         self.inventory = {}
@@ -30,7 +30,7 @@ class GameServer:
         self.last_math_question_time = 0
         
         self.grid_cells = {}
-        self.grid_size = 25  # Smaller grid cells
+        self.grid_size = 25
         
         self.random_names = [
             'John', 'Masha', 'Vova', 'Sasha', 'Ivan', 'Petr', 'Olga', 'Sergey', 'Andrey', 'Natalia',
@@ -90,6 +90,14 @@ class GameServer:
                             p['socket'].sendall(message.encode())
                     except:
                         continue
+    
+    def send_popup(self, message, color="#FFFFFF"):
+        with self.lock:
+            for p in self.players.values():
+                try:
+                    p['socket'].sendall(f"/popup {color} {message}\n".encode())
+                except:
+                    continue
     
     def handle_client(self, client_socket, address):
         client_id = f"{address[0]}:{address[1]}"
@@ -157,6 +165,10 @@ class GameServer:
                         if msg == "/inventory" or msg == "/inv":
                             client_socket.sendall(f"/server_msg #FFAA00 [SERVER] Your inventory: {self.inventory[client_id]}\n".encode())
                             client_socket.sendall(f"/server_msg #FFAA00 [SERVER] Your gems: {self.player_gems[client_id]}\n".encode())
+                            continue
+                        if msg == "/lukva":
+                            client_socket.sendall(f"/server_msg #FFAA00 [SERVER] You found a lukva!\n".encode())
+                            client_socket.sendall(f"/popup #FFAA00 You found a lukva!\n".encode())
                             continue
                         if msg.startswith("/"):
                             client_socket.sendall(b"/server_msg #FF0000 [SERVER] Unknown command. Type /help for available commands.\n")
