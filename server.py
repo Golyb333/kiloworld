@@ -14,10 +14,10 @@ class GameServer:
         
         self.MIN_COMMAND_INTERVAL = 30
         self.CHAT_LAST_MESSAGE_TIME = 0
-        self.GAME_WIDTH = 800
-        self.GAME_HEIGHT = 600
-        self.PLAYER_SIZE = 30
-        self.PLAYER_VEL = 3
+        self.GAME_WIDTH = 1200  # Double the width
+        self.GAME_HEIGHT = 900  # Double the height
+        self.PLAYER_SIZE = 25    # Slightly smaller player
+        self.PLAYER_VEL = 5      # Slightly faster movement to compensate for larger world
         self.MAX_HP = 30
         self.last_command_time = {}
         self.inventory = {}
@@ -28,6 +28,9 @@ class GameServer:
         self.math_question_time = 0
         self.math_question_cooldown = 60
         self.last_math_question_time = 0
+        
+        self.grid_cells = {}
+        self.grid_size = 25  # Smaller grid cells
         
         self.random_names = [
             'John', 'Masha', 'Vova', 'Sasha', 'Ivan', 'Petr', 'Olga', 'Sergey', 'Andrey', 'Natalia',
@@ -73,14 +76,18 @@ class GameServer:
             return True
         return False
     
-    def broadcast(self, message, exclude=None):
+    def broadcast(self, message, exclude=None, color=None):
         if not message.endswith('\n'):
             message += '\n'
         with self.lock:
             for p in self.players.values():
                 if p['socket'] != exclude:
                     try:
-                        p['socket'].sendall(message.encode())
+                        if color and message.startswith('[SERVER]'):
+                            colored_msg = f"/server_msg {color} {message}"
+                            p['socket'].sendall(colored_msg.encode())
+                        else:
+                            p['socket'].sendall(message.encode())
                     except:
                         continue
     
@@ -110,16 +117,19 @@ class GameServer:
                 self.player_gems[client_id] = 0
             
             try:
-                client_socket.sendall(b"[SERVER] Welcome to the game! Type /help for commands.\n")
-                state = json.dumps({'players': {n: {
-                    'x': p['x'], 
-                    'y': p['y'], 
-                    'color': p['color'],
-                    'name': p['name'],
-                    'hp': p['hp'],
-                    'message': p.get('message'),
-                    'message_time': p.get('message_time', 0)
-                } for n, p in self.players.items()}})
+                client_socket.sendall(b"/server_msg #00FF00 [SERVER] Welcome to the game! Type /help for commands.\n")
+                state = json.dumps({
+                    'players': {n: {
+                        'x': p['x'], 
+                        'y': p['y'], 
+                        'color': p['color'],
+                        'name': p['name'],
+                        'hp': p['hp'],
+                        'message': p.get('message'),
+                        'message_time': p.get('message_time', 0)
+                    } for n, p in self.players.items()},
+                    'grid_cells': self.grid_cells
+                })
                 client_socket.sendall(f"/state {state}\n".encode())
             except Exception as e:
                 self.log(f"Error sending initial data to {client_id}: {e}")
@@ -137,22 +147,23 @@ class GameServer:
                         if msg == "":
                             continue
                         if msg == "/help" or msg == "/h" or msg == "/?":
-                            client_socket.sendall(b"[SERVER] /inventory - show your inventory\n")
-                            client_socket.sendall(b"[SERVER] /time - show current time\n")
+                            client_socket.sendall(b"/server_msg #FF0000 [SERVER] Available commands:\n")
+                            client_socket.sendall(b"/server_msg #00AA00 [SERVER] /inventory - show your inventory\n")
+                            client_socket.sendall(b"/server_msg #00AA00 [SERVER] /time - show current time\n")
                             continue
                         if msg == "/time":
-                            client_socket.sendall(f"[SERVER] {time.strftime('%H:%M:%S')}\n".encode())
+                            client_socket.sendall(f"/server_msg #00AAFF [SERVER] {time.strftime('%H:%M:%S')}\n".encode())
                             continue
                         if msg == "/inventory" or msg == "/inv":
-                            client_socket.sendall(f"[SERVER] Your inventory: {self.inventory[client_id]}\n".encode())
-                            client_socket.sendall(f"[SERVER] Your gems: {self.player_gems[client_id]}\n".encode())
+                            client_socket.sendall(f"/server_msg #FFAA00 [SERVER] Your inventory: {self.inventory[client_id]}\n".encode())
+                            client_socket.sendall(f"/server_msg #FFAA00 [SERVER] Your gems: {self.player_gems[client_id]}\n".encode())
                             continue
                         if msg.startswith("/"):
-                            client_socket.sendall(b"[SERVER] Unknown command. Type /help for available commands.\n")
+                            client_socket.sendall(b"/server_msg #FF0000 [SERVER] Unknown command. Type /help for available commands.\n")
                             continue
                         if len(msg) > 40:
                             msg = msg[:40]
-                            client_socket.sendall(b"[SERVER] Your message too long. It has been cut lol.\n")
+                            client_socket.sendall(b"/server_msg #FF5500 [SERVER] Your message too long. It has been cut lol.\n")
                             
                         with self.lock:
                             player_name = self.players[client_id]['name']
@@ -167,27 +178,71 @@ class GameServer:
                                 if user_answer == correct_answer:
                                     reward = random.randint(1, 15)
                                     self.player_gems[client_id] += reward
-                                    self.broadcast(f"[Gem Game] {player_name} correctly answered the math question and earned {reward} gems!")
-                                    client_socket.sendall(f"[Gem Game] You now have {self.player_gems[client_id]} gems.\n".encode())
+                                    self.broadcast(f"[Gem Game] {player_name} correctly answered the math question and earned {reward} gems!", color="#00FF00")
+                                    client_socket.sendall(f"/server_msg #00FF00 [Gem Game] You now have {self.player_gems[client_id]} gems.\n".encode())
                                     
                                     self.current_math_question = None
                                     self.last_math_question_time = time.time()
+                                    
+                                    for cell_key in list(self.grid_cells.keys()):
+                                        if self.grid_cells[cell_key] == "#FFFF00":
+                                            self.grid_cells[cell_key] = "#00FF00"
+                                    
+                                    x = random.randint(0, 15) * self.grid_size
+                                    y = random.randint(0, 11) * self.grid_size
+                                    cell_key = f"{x},{y}"
+                                    self.grid_cells[cell_key] = "#FF00FF"
+                                    
+                                    state = json.dumps({
+                                        'players': {n: {
+                                            'x': p['x'], 
+                                            'y': p['y'], 
+                                            'color': p['color'],
+                                            'name': p['name'],
+                                            'hp': p['hp'],
+                                            'message': p.get('message'),
+                                            'message_time': p.get('message_time', 0)
+                                        } for n, p in self.players.items()},
+                                        'grid_cells': self.grid_cells
+                                    })
+                                    self.broadcast(f"/state {state}")
                                 else:
                                     self.broadcast(f"[CHAT] {player_name}: {msg} (wrong answer)")
+                                    
+                                    for cell_key in list(self.grid_cells.keys()):
+                                        if self.grid_cells[cell_key] == "#FFFF00":
+                                            self.grid_cells[cell_key] = "#FF0000"
+                                    
+                                    state = json.dumps({
+                                        'players': {n: {
+                                            'x': p['x'], 
+                                            'y': p['y'], 
+                                            'color': p['color'],
+                                            'name': p['name'],
+                                            'hp': p['hp'],
+                                            'message': p.get('message'),
+                                            'message_time': p.get('message_time', 0)
+                                        } for n, p in self.players.items()},
+                                        'grid_cells': self.grid_cells
+                                    })
+                                    self.broadcast(f"/state {state}")
                             except ValueError:
                                 self.broadcast(f"[CHAT] {player_name}: {msg}")
                         else:
                             self.broadcast(f"[CHAT] {player_name}: {msg}")
                         
-                        state = json.dumps({'players': {n: {
-                            'x': p['x'], 
-                            'y': p['y'], 
-                            'color': p['color'],
-                            'name': p['name'],
-                            'hp': p['hp'],
-                            'message': p.get('message'),
-                            'message_time': p.get('message_time', 0)
-                        } for n, p in self.players.items()}})
+                        state = json.dumps({
+                            'players': {n: {
+                                'x': p['x'], 
+                                'y': p['y'], 
+                                'color': p['color'],
+                                'name': p['name'],
+                                'hp': p['hp'],
+                                'message': p.get('message'),
+                                'message_time': p.get('message_time', 0)
+                            } for n, p in self.players.items()},
+                            'grid_cells': self.grid_cells
+                        })
                         self.broadcast(f"/state {state}")
                     elif data.startswith('/move '):
                         now = int(time.time() * 1000)
@@ -221,15 +276,18 @@ class GameServer:
                             py = max(0, min(self.GAME_HEIGHT-self.PLAYER_SIZE, py))
                             self.players[client_id]['x'] = px
                             self.players[client_id]['y'] = py
-                        state = json.dumps({'players': {n: {
-                            'x': p['x'], 
-                            'y': p['y'], 
-                            'color': p['color'],
-                            'name': p['name'],
-                            'hp': p['hp'],
-                            'message': p.get('message'),
-                            'message_time': p.get('message_time', 0)
-                        } for n, p in self.players.items()}})
+                        state = json.dumps({
+                            'players': {n: {
+                                'x': p['x'], 
+                                'y': p['y'], 
+                                'color': p['color'],
+                                'name': p['name'],
+                                'hp': p['hp'],
+                                'message': p.get('message'),
+                                'message_time': p.get('message_time', 0)
+                            } for n, p in self.players.items()},
+                            'grid_cells': self.grid_cells
+                        })
                         self.broadcast(f"/state {state}")
                 except ConnectionResetError:
                     break
@@ -250,24 +308,51 @@ class GameServer:
             self.update_client_list()
     
     def generate_math_question(self):
-        operation = random.choice(['+', '-'])
-        if operation == '+':
-            a = random.randint(6, 34)
-            b = random.randint(6, 34)
-            answer = a + b
-            question = f"How much is {a} + {b}?"
-        else:
-            a = random.randint(6, 34)
-            b = random.randint(6, min(a, 34))
-            answer = a - b
-            question = f"How much is {a} - {b}?"
+        if self.current_math_question is not None:
+            return
         
-        return {
-            'question': question,
-            'answer': answer,
-            'time': time.time()
+        if time.time() - self.last_math_question_time < self.math_question_cooldown:
+            return
+            
+        self.math_question_time = time.time()
+        
+        num1 = random.randint(1, 20)
+        num2 = random.randint(1, 20)
+        operation = random.choice(['+', '-', '*'])
+        
+        if operation == '+':
+            answer = num1 + num2
+        elif operation == '-':
+            answer = num1 - num2
+        else:
+            answer = num1 * num2
+            
+        self.current_math_question = {
+            'question': f"{num1} {operation} {num2}",
+            'answer': answer
         }
-    
+        
+        self.broadcast(f"[Gem Game] Math question: {self.current_math_question['question']} = ?", color="#FFFF00")
+        
+        x = random.randint(0, 15) * self.grid_size
+        y = random.randint(0, 11) * self.grid_size
+        cell_key = f"{x},{y}"
+        self.grid_cells[cell_key] = "#FFFF00"
+        
+        state = json.dumps({
+            'players': {n: {
+                'x': p['x'], 
+                'y': p['y'], 
+                'color': p['color'],
+                'name': p['name'],
+                'hp': p['hp'],
+                'message': p.get('message'),
+                'message_time': p.get('message_time', 0)
+            } for n, p in self.players.items()},
+            'grid_cells': self.grid_cells
+        })
+        self.broadcast(f"/state {state}")
+
     def check_and_send_math_question(self):
         now = time.time()
         
@@ -275,7 +360,7 @@ class GameServer:
             now - self.last_math_question_time > self.math_question_cooldown and
             len(self.players) > 0):
             
-            self.current_math_question = self.generate_math_question()
+            self.generate_math_question()
             self.broadcast(f"[Gem Game] Math question for gems: {self.current_math_question['question']} First to answer correctly wins!")
             self.last_math_question_time = now
 

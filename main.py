@@ -4,9 +4,9 @@ import threading
 import json
 import time
 
-width = 800
-height = 600
-PLAYER_SIZE = 30
+width = 1200  # Match server width
+height = 900  # Match server height
+PLAYER_SIZE = 25  # Match server player size
 pygame.init()
 pygame.font.init()
 win = pygame.display.set_mode((width, height))
@@ -19,6 +19,7 @@ s.connect((ip, port))
 players = {}
 visual_players = {}
 chat_messages = []
+grid_cells = {}
 current_message = ""
 chat_active = False
 font = pygame.font.SysFont('Arial', 16)
@@ -35,6 +36,9 @@ def receive():
                 if line.startswith('/state '):
                     state = json.loads(line[7:])
                     players = state['players']
+                    if 'grid_cells' in state:
+                        global grid_cells
+                        grid_cells = state['grid_cells']
                     for player_id, player_data in players.items():
                         if player_id not in visual_players:
                             visual_players[player_id] = player_data.copy()
@@ -43,8 +47,16 @@ def receive():
                             visual_players[player_id]['hp'] = player_data.get('hp', 100)
                             visual_players[player_id]['message'] = player_data.get('message')
                             visual_players[player_id]['message_time'] = player_data.get('message_time', 0)
-                elif line.startswith('[CHAT]') or line.startswith('[SERVER]'):
-                    chat_messages.append(line)
+                elif line.startswith('/server_msg '):
+                    parts = line.split(' ', 2)
+                    if len(parts) == 3:
+                        color_hex = parts[1]
+                        message = parts[2]
+                        chat_messages.append((message, color_hex))
+                        if len(chat_messages) > 10:
+                            chat_messages.pop(0)
+                elif line.startswith('[CHAT]') or line.startswith('[SERVER]') or line.startswith('[Gem Game]'):
+                    chat_messages.append((line, None))
                     if len(chat_messages) > 10:
                         chat_messages.pop(0)
         except Exception as e:
@@ -70,7 +82,18 @@ def update_visual_positions():
 def redrawWindow():
     win.fill((255, 255, 255))
     
-    grid_size = 50
+    grid_size = 25  # Match server grid size
+    
+    for y in range(0, height, grid_size):
+        for x in range(0, width, grid_size):
+            cell_key = f"{x},{y}"
+            if cell_key in grid_cells:
+                color_hex = grid_cells[cell_key]
+                r = int(color_hex[1:3], 16)
+                g = int(color_hex[3:5], 16)
+                b = int(color_hex[5:7], 16)
+                pygame.draw.rect(win, (r, g, b), (x, y, grid_size, grid_size))
+    
     for x in range(0, width, grid_size):
         pygame.draw.line(win, (230, 230, 230), (x, 0), (x, height))
     for y in range(0, height, grid_size):
@@ -106,8 +129,18 @@ def redrawWindow():
             win.blit(msg_bg, (p['x'] + PLAYER_SIZE//2 - msg_text.get_width()//2 - 5, p['y'] - 60))
             win.blit(msg_text, (p['x'] + PLAYER_SIZE//2 - msg_text.get_width()//2, p['y'] - 57))
     
-    for i, msg in enumerate(chat_messages):
-        text = font.render(msg, True, (0, 0, 0))
+    for i, msg_data in enumerate(chat_messages):
+        if isinstance(msg_data, tuple):
+            msg, color_hex = msg_data
+            if color_hex:
+                r = int(color_hex[1:3], 16)
+                g = int(color_hex[3:5], 16)
+                b = int(color_hex[5:7], 16)
+                text = font.render(msg, True, (r, g, b))
+            else:
+                text = font.render(msg, True, (0, 0, 0))
+        else:
+            text = font.render(msg_data, True, (0, 0, 0))
         win.blit(text, (10, height - 200 + i * 20))
     
     if chat_active and current_message:
@@ -154,24 +187,50 @@ def main():
                 elif chat_active:
                     current_message += event.unicode
                 
-                if event.key == pygame.K_LEFT:
+                # WASD movement controls
+                if event.key == pygame.K_a:
                     movement_buffer["left"] = True
-                if event.key == pygame.K_RIGHT:
+                if event.key == pygame.K_d:
                     movement_buffer["right"] = True
-                if event.key == pygame.K_UP:
+                if event.key == pygame.K_w:
                     movement_buffer["up"] = True
-                if event.key == pygame.K_DOWN:
+                if event.key == pygame.K_s:
                     movement_buffer["down"] = True
+                
+                # Diagonal movement with QEZX for better control
+                if event.key == pygame.K_q:  # Up-Left
+                    movement_buffer["up"] = True
+                    movement_buffer["left"] = True
+                if event.key == pygame.K_e:  # Up-Right
+                    movement_buffer["up"] = True
+                    movement_buffer["right"] = True
+                if event.key == pygame.K_z:  # Down-Left
+                    movement_buffer["down"] = True
+                    movement_buffer["left"] = True
+                if event.key == pygame.K_c:  # Down-Right
+                    movement_buffer["down"] = True
+                    movement_buffer["right"] = True
             
             if event.type == pygame.KEYUP:
-                if event.key == pygame.K_LEFT:
+                if event.key == pygame.K_a:
                     movement_buffer["left"] = False
-                if event.key == pygame.K_RIGHT:
+                if event.key == pygame.K_d:
                     movement_buffer["right"] = False
-                if event.key == pygame.K_UP:
+                if event.key == pygame.K_w:
                     movement_buffer["up"] = False
-                if event.key == pygame.K_DOWN:
+                if event.key == pygame.K_s:
                     movement_buffer["down"] = False
+                # Reset diagonal movement keys
+                if event.key == pygame.K_q or event.key == pygame.K_z:  # Left diagonals
+                    if not pygame.key.get_pressed()[pygame.K_LEFT] and not pygame.key.get_pressed()[pygame.K_a]:
+                        movement_buffer["left"] = False
+                    if not pygame.key.get_pressed()[pygame.K_UP] and not pygame.key.get_pressed()[pygame.K_w]:
+                        movement_buffer["up"] = False
+                if event.key == pygame.K_e or event.key == pygame.K_c:  # Right diagonals
+                    if not pygame.key.get_pressed()[pygame.K_RIGHT] and not pygame.key.get_pressed()[pygame.K_d]:
+                        movement_buffer["right"] = False
+                    if not pygame.key.get_pressed()[pygame.K_DOWN] and not pygame.key.get_pressed()[pygame.K_s]:
+                        movement_buffer["down"] = False
         
         if current_time - last_movement_time > movement_cooldown:
             if movement_buffer["left"] and movement_buffer["up"]:
