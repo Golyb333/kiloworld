@@ -4,6 +4,7 @@ import time
 import json
 import random
 from datetime import datetime
+from game_config import GameConfig, ip, port
 
 class GameServer:
     def __init__(self):
@@ -12,13 +13,7 @@ class GameServer:
         self.players = {}
         self.lock = threading.Lock()
         
-        self.MIN_COMMAND_INTERVAL = 30
-        self.CHAT_LAST_MESSAGE_TIME = 0
-        self.GAME_WIDTH = 1200
-        self.GAME_HEIGHT = 900
-        self.PLAYER_SIZE = 25
-        self.PLAYER_VEL = 5
-        self.MAX_HP = 30
+        self.CHAT_LAST_MESSAGE_TIME = {}
         self.last_command_time = {}
         self.inventory = {}
         self.player_messages = {}
@@ -26,24 +21,9 @@ class GameServer:
         self.player_gems = {}
         self.current_math_question = None
         self.math_question_time = 0
-        self.math_question_cooldown = 60
         self.last_math_question_time = 0
         
         self.grid_cells = {}
-        self.grid_size = 25
-        
-        self.random_names = [
-            'John', 'Masha', 'Vova', 'Sasha', 'Ivan', 'Petr', 'Olga', 'Sergey', 'Andrey', 'Natalia',
-            'Victor', 'Lena', 'Dasha', 'Slava', 'Ilya', 'Kristina', 'Yana', 'Nikita', 'Artem', 'Denis',
-            'Tanya', 'Roman', 'Marina', 'Oleg', 'Elena', 'Vadim', 'Alexey', 'Nastya', 'Maxim', 'Anya',
-            'Daniil', 'Inna', 'Evgeniy', 'Svetlana', 'Konstantin', 'Irina', 'Timur', 'Galina', 'Dmitriy', 'Alina',
-        ]
-        
-        self.player_colors = [
-            [255, 0, 0], [0, 255, 0], [0, 0, 255], [255, 255, 0], [255, 0, 255],
-            [0, 255, 255], [255, 128, 0], [128, 0, 255], [0, 128, 255], [128, 255, 0],
-            [255, 128, 128], [128, 255, 128], [128, 128, 255], [192, 192, 192], [128, 128, 128]
-        ]
     
     def log(self, message):
         timestamp = datetime.now().strftime("%H:%M:%S")
@@ -105,23 +85,24 @@ class GameServer:
         
         try:
             with self.lock:
-                random_name = random.choice(self.random_names)
-                random_color = random.choice(self.player_colors)
+                random_name = GameConfig.get_random_name()
+                random_color = GameConfig.get_random_color()
                 
                 self.players[client_id] = {
                     'socket': client_socket,
                     'address': address,
                     'name': f"{random_name}_{len(self.players)+1}",
-                    'x': random.randint(50, self.GAME_WIDTH - self.PLAYER_SIZE - 50),
-                    'y': random.randint(50, self.GAME_HEIGHT - self.PLAYER_SIZE - 50),
+                    'x': random.randint(50, GameConfig.GAME_WIDTH - GameConfig.PLAYER_SIZE - 50),
+                    'y': random.randint(50, GameConfig.GAME_HEIGHT - GameConfig.PLAYER_SIZE - 50),
                     'color': random_color,
-                    'hp': self.MAX_HP,
+                    'hp': GameConfig.MAX_HP,
                     'last_command': time.time(),
                     'message': None,
                     'message_time': 0
                 }
                 self.inventory[client_id] = []
                 self.last_command_time[client_id] = 0
+                self.CHAT_LAST_MESSAGE_TIME[client_id] = 0
                 self.player_gems[client_id] = 0
             
             try:
@@ -151,6 +132,13 @@ class GameServer:
                         break
                     
                     if data.startswith('/chat '):
+                        # Проверка кулдауна на сообщения
+                        current_time = time.time()
+                        if current_time - self.CHAT_LAST_MESSAGE_TIME.get(client_id, 0) < GameConfig.CHAT_COOLDOWN:
+                            client_socket.sendall(f"/server_msg #FF0000 [SERVER] Please wait before sending another message.\n".encode())
+                            continue
+                            
+                        self.CHAT_LAST_MESSAGE_TIME[client_id] = current_time
                         msg = data[6:]
                         if msg == "":
                             continue
@@ -200,8 +188,8 @@ class GameServer:
                                         if self.grid_cells[cell_key] == "#FFFF00":
                                             self.grid_cells[cell_key] = "#00FF00"
                                     
-                                    x = random.randint(0, 15) * self.grid_size
-                                    y = random.randint(0, 11) * self.grid_size
+                                    x = random.randint(0, 15) * GameConfig.GRID_SIZE
+                                    y = random.randint(0, 11) * GameConfig.GRID_SIZE
                                     cell_key = f"{x},{y}"
                                     self.grid_cells[cell_key] = "#FF00FF"
                                     
@@ -258,34 +246,34 @@ class GameServer:
                         self.broadcast(f"/state {state}")
                     elif data.startswith('/move '):
                         now = int(time.time() * 1000)
-                        if now - self.last_command_time[client_id] < self.MIN_COMMAND_INTERVAL:
+                        if now - self.last_command_time[client_id] < GameConfig.MIN_COMMAND_INTERVAL:
                             continue
                         self.last_command_time[client_id] = now
                         direction = data[6:]
                         with self.lock:
                             px, py = self.players[client_id]['x'], self.players[client_id]['y']
                             if direction == 'upleft':
-                                px -= self.PLAYER_VEL
-                                py -= self.PLAYER_VEL
+                                px -= GameConfig.PLAYER_VEL
+                                py -= GameConfig.PLAYER_VEL
                             elif direction == 'upright':
-                                px += self.PLAYER_VEL
-                                py -= self.PLAYER_VEL
+                                px += GameConfig.PLAYER_VEL
+                                py -= GameConfig.PLAYER_VEL
                             elif direction == 'downleft':
-                                px -= self.PLAYER_VEL
-                                py += self.PLAYER_VEL
+                                px -= GameConfig.PLAYER_VEL
+                                py += GameConfig.PLAYER_VEL
                             elif direction == 'downright':
-                                px += self.PLAYER_VEL
-                                py += self.PLAYER_VEL
+                                px += GameConfig.PLAYER_VEL
+                                py += GameConfig.PLAYER_VEL
                             elif direction == 'left':
-                                px -= self.PLAYER_VEL
+                                px -= GameConfig.PLAYER_VEL
                             elif direction == 'right':
-                                px += self.PLAYER_VEL
+                                px += GameConfig.PLAYER_VEL
                             elif direction == 'up':
-                                py -= self.PLAYER_VEL
+                                py -= GameConfig.PLAYER_VEL
                             elif direction == 'down':
-                                py += self.PLAYER_VEL
-                            px = max(0, min(self.GAME_WIDTH-self.PLAYER_SIZE, px))
-                            py = max(0, min(self.GAME_HEIGHT-self.PLAYER_SIZE, py))
+                                py += GameConfig.PLAYER_VEL
+                            px = max(0, min(GameConfig.GAME_WIDTH-GameConfig.PLAYER_SIZE, px))
+                            py = max(0, min(GameConfig.GAME_HEIGHT-GameConfig.PLAYER_SIZE, py))
                             self.players[client_id]['x'] = px
                             self.players[client_id]['y'] = py
                         state = json.dumps({
@@ -313,6 +301,8 @@ class GameServer:
                     del self.players[client_id]
                     del self.inventory[client_id]
                     del self.last_command_time[client_id]
+                    if client_id in self.CHAT_LAST_MESSAGE_TIME:
+                        del self.CHAT_LAST_MESSAGE_TIME[client_id]
                     if client_id in self.player_gems:
                         del self.player_gems[client_id]
             client_socket.close()
@@ -323,7 +313,7 @@ class GameServer:
         if self.current_math_question is not None:
             return
         
-        if time.time() - self.last_math_question_time < self.math_question_cooldown:
+        if time.time() - self.last_math_question_time < GameConfig.MATH_QUESTION_COOLDOWN:
             return
             
         self.math_question_time = time.time()
@@ -346,8 +336,8 @@ class GameServer:
         
         self.broadcast(f"[Gem Game] Math question: {self.current_math_question['question']} = ?", color="#FFFF00")
         
-        x = random.randint(0, 15) * self.grid_size
-        y = random.randint(0, 11) * self.grid_size
+        x = random.randint(0, 15) * GameConfig.GRID_SIZE
+        y = random.randint(0, 11) * GameConfig.GRID_SIZE
         cell_key = f"{x},{y}"
         self.grid_cells[cell_key] = "#FFFF00"
         
@@ -369,14 +359,14 @@ class GameServer:
         now = time.time()
         
         if (self.current_math_question is None and 
-            now - self.last_math_question_time > self.math_question_cooldown and
+            now - self.last_math_question_time > GameConfig.MATH_QUESTION_COOLDOWN and
             len(self.players) > 0):
             
             self.generate_math_question()
             self.broadcast(f"[Gem Game] Math question for gems: {self.current_math_question['question']} First to answer correctly wins!")
             self.last_math_question_time = now
 
-            if self.current_math_question is not None and now - self.last_math_question_time > self.math_question_cooldown:
+            if self.current_math_question is not None and now - self.last_math_question_time > GameConfig.MATH_QUESTION_COOLDOWN:
                 self.broadcast(f"[Gem Game] No one answer correctly!")
                 self.last_math_question_time = now
                 self.current_math_question = None
@@ -418,43 +408,3 @@ class GameServer:
                 time.sleep(5)
             except Exception as e:
                 self.log(f"Error in periodic tasks: {e}")
-
-def main():
-    server = GameServer()
-    server.start_server()
-    
-    try:
-        while True:
-            cmd = input("> ")
-            if cmd.lower() in ['stop', 'exit', 'quit']:
-                server.stop_server()
-                break
-            elif cmd.lower() in ['help', '?']:
-                print("Available commands:")
-                print("  help, ? - Show this help")
-                print("  stop, exit, quit - Stop the server")
-                print("  list - List connected clients")
-                print("  gems - Show gems for all players")
-                print("  question - Force a new math question")
-            elif cmd.lower() == 'list':
-                server.update_client_list()
-            elif cmd.lower() == 'gems':
-                print("Player gems:")
-                for pid, player in server.players.items():
-                    print(f"  {player['name']}: {server.player_gems.get(pid, 0)} gems")
-            elif cmd.lower() == 'question':
-                server.current_math_question = None
-                server.last_math_question_time = 0
-                server.check_and_send_math_question()
-                print("New math question sent!")
-            else:
-                print(f"Unknown command: {cmd}. Type 'help' for available commands.")
-    except KeyboardInterrupt:
-        print("\nShutting down server...")
-        server.stop_server()
-
-ip = '127.0.0.1'
-port = 55555
-
-if __name__ == "__main__":
-    main()
