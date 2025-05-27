@@ -29,6 +29,9 @@ def main():
                 server.last_math_question_time = 0
                 server.check_and_send_math_question()
                 print("New math question sent!")
+            elif cmd.lower() == 'tps':
+                print(f"Internal TPS: {server.internal_tps:.2f} (packet processing)")
+                print(f"External TPS: {server.external_tps:.2f} (broadcast updates)")
             else:
                 print(f"Unknown command: {cmd}. Type 'help' for available commands.")
     except KeyboardInterrupt:

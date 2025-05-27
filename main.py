@@ -111,24 +111,40 @@ def redrawWindow():
     win.fill((255, 255, 255))
     
     grid_size = scale_x(25)
-    for y in range(0, height, grid_size):
-        for x in range(0, width, grid_size):
-            base_x = int(x * BASE_WIDTH / width)
-            base_y = int(y * BASE_HEIGHT / height)
-            base_x = base_x - base_x % 25
-            base_y = base_y - base_y % 25
+    
+    # Calculate the number of cells that fit in the current window size
+    cells_x = width // grid_size
+    cells_y = height // grid_size
+    
+    # Calculate the maximum cells based on the base dimensions
+    max_cells_x = BASE_WIDTH // 25
+    max_cells_y = BASE_HEIGHT // 25
+    
+    # Use the smaller number to prevent exceeding the game boundaries
+    cells_x = min(cells_x, max_cells_x)
+    cells_y = min(cells_y, max_cells_y)
+    
+    # Draw only the cells that should be visible
+    for y in range(cells_y):
+        for x in range(cells_x):
+            screen_x = x * grid_size
+            screen_y = y * grid_size
+            base_x = x * 25  # Original grid size
+            base_y = y * 25  # Original grid size
             cell_key = f"{base_x},{base_y}"
+            
             if cell_key in grid_cells:
                 color_hex = grid_cells[cell_key]
                 r = int(color_hex[1:3], 16)
                 g = int(color_hex[3:5], 16)
                 b = int(color_hex[5:7], 16)
-                pygame.draw.rect(win, (r, g, b), (x, y, grid_size, grid_size))
+                pygame.draw.rect(win, (r, g, b), (screen_x, screen_y, grid_size, grid_size))
     
-    for x in range(0, width, grid_size):
-        pygame.draw.line(win, (230, 230, 230), (x, 0), (x, height))
-    for y in range(0, height, grid_size):
-        pygame.draw.line(win, (230, 230, 230), (0, y), (width, y))
+    # Draw grid lines only for the valid game area
+    for x in range(cells_x + 1):
+        pygame.draw.line(win, (230, 230, 230), (x * grid_size, 0), (x * grid_size, cells_y * grid_size))
+    for y in range(cells_y + 1):
+        pygame.draw.line(win, (230, 230, 230), (0, y * grid_size), (cells_x * grid_size, y * grid_size))
     
     update_visual_positions()
 

@@ -8,6 +8,14 @@ from game_config import GameConfig, ip, port
 
 class GameServer:
     def __init__(self):
+        self.internal_packets = 0
+        self.internal_last_time = time.time()
+        self.internal_tps = 0
+        
+        self.external_packets = 0
+        self.external_last_time = time.time()
+        self.external_tps = 0
+
         self.server_running = False
         self.server_thread = None
         self.players = {}
@@ -131,8 +139,9 @@ class GameServer:
                     if not data:
                         break
                     
+                    self.internal_packets += 1
+                    
                     if data.startswith('/chat '):
-                        # Проверка кулдауна на сообщения
                         current_time = time.time()
                         if current_time - self.CHAT_LAST_MESSAGE_TIME.get(client_id, 0) < GameConfig.CHAT_COOLDOWN:
                             client_socket.sendall(f"/server_msg #FF0000 [SERVER] Please wait before sending another message.\n".encode())
@@ -401,10 +410,25 @@ class GameServer:
             self.server.close()
             self.server_running = False
     
+    def calculate_tps(self):
+        now = time.time()
+        
+        if now - self.internal_last_time >= 1:
+            self.internal_tps = self.internal_packets / (now - self.internal_last_time)
+            self.internal_packets = 0
+            self.internal_last_time = now
+            
+        if now - self.external_last_time >= 1:
+            self.external_tps = self.external_packets / (now - self.external_last_time)
+            self.external_packets = 0
+            self.external_last_time = now
+
     def periodic_tasks(self):
         while self.server_running:
             try:
+                self.calculate_tps()
                 self.check_and_send_math_question()
+                time.sleep(0.1)
                 time.sleep(5)
             except Exception as e:
                 self.log(f"Error in periodic tasks: {e}")

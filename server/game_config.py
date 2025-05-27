@@ -10,7 +10,7 @@ class GameConfig:
     PLAYER_VEL = 5
     MAX_HP = 30
     MIN_COMMAND_INTERVAL = 30
-    CHAT_COOLDOWN = 2
+    CHAT_COOLDOWN = 0.8
     MATH_QUESTION_COOLDOWN = 60
     GRID_SIZE = 25
     
