@@ -4,12 +4,14 @@ import threading
 import json
 import time
 
-width = 1200
-height = 900
+BASE_WIDTH = 1200
+BASE_HEIGHT = 900
+width = BASE_WIDTH
+height = BASE_HEIGHT
 PLAYER_SIZE = 25
 pygame.init()
 pygame.font.init()
-win = pygame.display.set_mode((width, height))
+win = pygame.display.set_mode((width, height), pygame.RESIZABLE)
 pygame.display.set_caption("kiloworld")
 
 ip = '127.0.0.1'
@@ -29,6 +31,16 @@ server_message = {
 }
 font = pygame.font.SysFont('Arial', 16)
 MOVEMENT_INTERPOLATION_SPEED = 0.15
+
+def scale_x(x):
+    return int(x * width / BASE_WIDTH)
+
+def scale_y(y):
+    return int(y * height / BASE_HEIGHT)
+
+def scale_font_size(size):
+    scale_factor = min(width / BASE_WIDTH, height / BASE_HEIGHT)
+    return int(size * scale_factor)
 
 def receive():
     global players
@@ -98,11 +110,14 @@ def update_visual_positions():
 def redrawWindow():
     win.fill((255, 255, 255))
     
-    grid_size = 25
-    
+    grid_size = scale_x(25)
     for y in range(0, height, grid_size):
         for x in range(0, width, grid_size):
-            cell_key = f"{x},{y}"
+            base_x = int(x * BASE_WIDTH / width)
+            base_y = int(y * BASE_HEIGHT / height)
+            base_x = base_x - base_x % 25
+            base_y = base_y - base_y % 25
+            cell_key = f"{base_x},{base_y}"
             if cell_key in grid_cells:
                 color_hex = grid_cells[cell_key]
                 r = int(color_hex[1:3], 16)
@@ -116,34 +131,43 @@ def redrawWindow():
         pygame.draw.line(win, (230, 230, 230), (0, y), (width, y))
     
     update_visual_positions()
+
+    scaled_player_size = scale_x(PLAYER_SIZE)
     
     current_time = time.time()
     for player_id, p in visual_players.items():
-        pygame.draw.rect(win, p['color'], (p['x'], p['y'], PLAYER_SIZE, PLAYER_SIZE))
+        scaled_x = scale_x(p['x'])
+        scaled_y = scale_y(p['y'])
+        
+        pygame.draw.rect(win, p['color'], (scaled_x, scaled_y, scaled_player_size, scaled_player_size))
+
+        scaled_font = pygame.font.SysFont('Arial', scale_font_size(16))
         
         player_name = p.get('name', f'Player {player_id[-1]}')
-        name_text = font.render(player_name, True, (50, 50, 50))
-        win.blit(name_text, (p['x'] + PLAYER_SIZE//2 - name_text.get_width()//2, p['y'] - 30))
+        name_text = scaled_font.render(player_name, True, (50, 50, 50))
+        win.blit(name_text, (scaled_x + scaled_player_size//2 - name_text.get_width()//2, scaled_y - scale_y(30)))
         
         hp = p.get('hp', 30)
-        hp_width = PLAYER_SIZE
-        hp_height = 5
+        hp_width = scaled_player_size
+        hp_height = scale_y(5)
         if hp > 0:
-            pygame.draw.rect(win, (0, 255, 0), (p['x'], p['y'] - 10, int(hp_width * (hp / 30)), hp_height))
+            pygame.draw.rect(win, (0, 255, 0), (scaled_x, scaled_y - scale_y(10), int(hp_width * (hp / 30)), hp_height))
             for i in range(1, 3):
-                divider_pos = p['x'] + int((hp_width / 3) * i)
-                pygame.draw.rect(win, (0, 0, 0), (divider_pos, p['y'] - 10, 1, hp_height))
+                divider_pos = scaled_x + int((hp_width / 3) * i)
+                pygame.draw.rect(win, (0, 0, 0), (divider_pos, scaled_y - scale_y(10), 1, hp_height))
         
         message = p.get('message')
         message_time = p.get('message_time', 0)
         
         if message and current_time - message_time < 2:
-            msg_text = font.render(message, True, (0, 0, 0))
-            msg_bg = pygame.Surface((msg_text.get_width() + 10, msg_text.get_height() + 6), pygame.SRCALPHA)
+            msg_text = scaled_font.render(message, True, (0, 0, 0))
+            msg_bg = pygame.Surface((msg_text.get_width() + scale_x(10), msg_text.get_height() + scale_y(6)), pygame.SRCALPHA)
             msg_bg.fill((255, 255, 255, 200))
             pygame.draw.rect(msg_bg, (0, 0, 0), (0, 0, msg_bg.get_width(), msg_bg.get_height()), 2)
-            win.blit(msg_bg, (p['x'] + PLAYER_SIZE//2 - msg_text.get_width()//2 - 5, p['y'] - 60))
-            win.blit(msg_text, (p['x'] + PLAYER_SIZE//2 - msg_text.get_width()//2, p['y'] - 57))
+            win.blit(msg_bg, (scaled_x + scaled_player_size//2 - msg_text.get_width()//2 - scale_x(5), scaled_y - scale_y(60)))
+            win.blit(msg_text, (scaled_x + scaled_player_size//2 - msg_text.get_width()//2, scaled_y - scale_y(57)))
+    
+    chat_font = pygame.font.SysFont('Arial', scale_font_size(16))
     
     for i, msg_data in enumerate(chat_messages):
         if isinstance(msg_data, tuple):
@@ -152,19 +176,19 @@ def redrawWindow():
                 r = int(color_hex[1:3], 16)
                 g = int(color_hex[3:5], 16)
                 b = int(color_hex[5:7], 16)
-                text = font.render(msg, True, (r, g, b))
+                text = chat_font.render(msg, True, (r, g, b))
             else:
-                text = font.render(msg, True, (0, 0, 0))
+                text = chat_font.render(msg, True, (0, 0, 0))
         else:
-            text = font.render(msg_data, True, (0, 0, 0))
-        win.blit(text, (10, height - 200 + i * 20))
+            text = chat_font.render(msg_data, True, (0, 0, 0))
+        win.blit(text, (scale_x(10), height - scale_y(200) + i * scale_y(20)))
 
     current_time = time.time()
     if server_message['text'] and current_time < server_message['end_time']:
-        popup_font = pygame.font.SysFont('Arial', 24, bold=True)
+        popup_font = pygame.font.SysFont('Arial', scale_font_size(24), bold=True)
         popup_text = popup_font.render(server_message['text'], True, (0, 0, 0))
         
-        padding = 30
+        padding = scale_x(30)
         popup_surface = pygame.Surface((popup_text.get_width() + padding * 2, 
                                       popup_text.get_height() + padding), 
                                      pygame.SRCALPHA)
@@ -183,19 +207,19 @@ def redrawWindow():
         
         win.blit(popup_surface, 
                 (width//2 - popup_surface.get_width()//2, 
-                 40))
+                 scale_y(40)))
     
     if chat_active and current_message:
-        text = font.render("> " + current_message, True, (0, 0, 0))
-        win.blit(text, (10, height - 220))
+        text = chat_font.render("> " + current_message, True, (0, 0, 0))
+        win.blit(text, (scale_x(10), height - scale_y(220)))
     elif chat_active:
-        text = font.render("> ", True, (0, 0, 0))
-        win.blit(text, (10, height - 220))
+        text = chat_font.render("> ", True, (0, 0, 0))
+        win.blit(text, (scale_x(10), height - scale_y(220)))
     
     pygame.display.update()
 
 def main():
-    global current_message, chat_active
+    global current_message, chat_active, width, height, win
     run = True
     clock = pygame.time.Clock()
     movement_buffer = {"left": False, "right": False, "up": False, "down": False}
@@ -212,6 +236,10 @@ def main():
                 pygame.quit()
                 s.close()
                 break
+            
+            if event.type == pygame.VIDEORESIZE:
+                width, height = event.size
+                win = pygame.display.set_mode((width, height), pygame.RESIZABLE)
             
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_RETURN:
