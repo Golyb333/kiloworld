@@ -5,6 +5,7 @@ import json
 import random
 from datetime import datetime
 from game_config import GameConfig, ip, port
+
 class GameServer:
     def __init__(self):
         self.internal_packets = 0
@@ -26,12 +27,15 @@ class GameServer:
         self.math_question_time = 0
         self.last_math_question_time = 0
         self.grid_cells = {}
+
     def log(self, message):
         timestamp = datetime.now().strftime("%H:%M:%S")
         print(f"[{timestamp}] {message}")
+
     def update_client_list(self):
         with self.lock:
             self.log(f"Connected Clients ({len(self.players)}): {', '.join([f"{pid} - {p.get('name', 'Unknown')}" for pid, p in self.players.items()])}")
+    
     def start_server(self):
         if not self.server_running:
             self.server_thread = threading.Thread(target=self.run_server, daemon=True)
@@ -39,6 +43,7 @@ class GameServer:
             self.log(f"Server started on {ip}:{port}")
             return True
         return False
+    
     def stop_server(self):
         if self.server_running:
             self.server_running = False
@@ -53,6 +58,7 @@ class GameServer:
             self.log("Server stopped")
             return True
         return False
+    
     def broadcast(self, message, exclude=None, color=None):
         if not message.endswith('\n'):
             message += '\n'
@@ -67,6 +73,7 @@ class GameServer:
                             p['socket'].sendall(message.encode())
                     except:
                         continue
+    
     def send_popup(self, message, color="#FFFFFF"):
         with self.lock:
             for p in self.players.values():
@@ -74,6 +81,7 @@ class GameServer:
                     p['socket'].sendall(f"/popup {color} {message}\n".encode())
                 except:
                     continue
+                        
     def handle_client(self, client_socket, address):
         client_id = f"{address[0]}:{address[1]}"
         self.log(f"New connection from {client_id}")

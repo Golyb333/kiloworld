@@ -38,18 +38,7 @@ MAX_CHAT_MESSAGES = 50
 chat_scroll = 0
 CHAT_FADE_TIME = 5.0
 last_chat_activity = time.time()
-inventory = []
-MAX_INVENTORY_SLOTS = 6
-inventory_visible = False
-selected_slot = -1
-ITEMS = {
-    "health_potion": {"name": "Health Potion", "color": (255, 0, 0), "icon": "H"},
-    "mana_potion": {"name": "Mana Potion", "color": (0, 0, 255), "icon": "M"},
-    "sword": {"name": "Sword", "color": (192, 192, 192), "icon": "S"},
-    "shield": {"name": "Shield", "color": (139, 69, 19), "icon": "D"},
-    "boots": {"name": "Boots", "color": (101, 67, 33), "icon": "B"},
-    "ring": {"name": "Ring", "color": (255, 215, 0), "icon": "R"}
-}
+
 def scale_x(x):
     return int(x * width / BASE_WIDTH)
 def scale_y(y):
@@ -58,7 +47,7 @@ def scale_font_size(size):
     scale_factor = min(width / BASE_WIDTH, height / BASE_HEIGHT)
     return int(size * scale_factor)
 def receive():
-    global players, chat_messages, last_chat_activity, inventory
+    global players, chat_messages, last_chat_activity
     while True:
         try:
             data = s.recv(1024).decode()
@@ -79,8 +68,6 @@ def receive():
                             visual_players[player_id]['hp'] = player_data.get('hp', 100)
                             visual_players[player_id]['message'] = player_data.get('message')
                             visual_players[player_id]['message_time'] = player_data.get('message_time', 0)
-                    if 'inventory' in state:
-                        inventory = state['inventory']
                 elif line.startswith('/server_msg ') or line.startswith('[CHAT]') or line.startswith('[SERVER]') or line.startswith('[Gem Game]'):
                     last_chat_activity = time.time()
                     if len(chat_messages) >= MAX_CHAT_MESSAGES:
@@ -112,12 +99,6 @@ def receive():
                         server_message['text'] = message
                         server_message['color'] = (r, g, b)
                         server_message['end_time'] = time.time() + 5
-                elif line.startswith('/inventory '):
-                    try:
-                        inventory_data = json.loads(line[11:])
-                        inventory = inventory_data
-                    except json.JSONDecodeError:
-                        print(f"Error parsing inventory data: {line[11:]}")
         except Exception as e:
             print(f"Error in receive: {e}")
             break
@@ -226,60 +207,7 @@ def draw_chat():
                                (cursor_x, cursor_y + 2),
                                (cursor_x, cursor_y + line_height - 2))
         win.blit(input_surface, (chat_x, chat_y - input_height - scale_y(5)))
-def draw_inventory():
-    if not inventory_visible:
-        return
-    slot_size = scale_x(50)
-    slot_padding = scale_x(5)
-    inventory_width = (slot_size + slot_padding) * 3 + slot_padding
-    inventory_height = (slot_size + slot_padding) * 2 + slot_padding
-    inventory_x = width - inventory_width - scale_x(10)
-    inventory_y = scale_y(10)
-    inventory_surface = pygame.Surface((inventory_width, inventory_height), pygame.SRCALPHA)
-    bg_color = (40, 44, 52, 220)
-    border_color = (70, 75, 85, 180)
-    pygame.draw.rect(inventory_surface, bg_color, 
-                    (0, 0, inventory_width, inventory_height), 
-                    border_radius=scale_x(8))
-    pygame.draw.rect(inventory_surface, border_color,
-                    (0, 0, inventory_width, inventory_height),
-                    scale_x(2), border_radius=scale_x(8))
-    inventory_font = pygame.font.SysFont('Arial', scale_font_size(18), bold=True)
-    title_text = inventory_font.render("Inventory", True, (220, 223, 228))
-    inventory_surface.blit(title_text, 
-                         (inventory_width//2 - title_text.get_width()//2, 
-                          slot_padding))
-    slot_font = pygame.font.SysFont('Arial', scale_font_size(20), bold=True)
-    for i in range(MAX_INVENTORY_SLOTS):
-        row = i // 3
-        col = i % 3
-        slot_x = slot_padding + col * (slot_size + slot_padding)
-        slot_y = slot_padding * 2 + title_text.get_height() + row * (slot_size + slot_padding)
-        slot_bg_color = (30, 33, 38, 200)
-        slot_border_color = (90, 95, 105, 180) if i != selected_slot else (255, 215, 0, 220)
-        pygame.draw.rect(inventory_surface, slot_bg_color,
-                        (slot_x, slot_y, slot_size, slot_size),
-                        border_radius=scale_x(4))
-        pygame.draw.rect(inventory_surface, slot_border_color,
-                        (slot_x, slot_y, slot_size, slot_size),
-                        scale_x(2), border_radius=scale_x(4))
-        if i < len(inventory) and inventory[i]:
-            item_id = inventory[i]
-            if item_id in ITEMS:
-                item = ITEMS[item_id]
-                icon_text = slot_font.render(item["icon"], True, item["color"])
-                inventory_surface.blit(icon_text, 
-                                     (slot_x + slot_size//2 - icon_text.get_width()//2, 
-                                      slot_y + slot_size//2 - icon_text.get_height()//2))
-                item_name_font = pygame.font.SysFont('Arial', scale_font_size(10))
-                name_text = item_name_font.render(item["name"], True, (200, 203, 208))
-                inventory_surface.blit(name_text, 
-                                     (slot_x + slot_size//2 - name_text.get_width()//2, 
-                                      slot_y + slot_size - name_text.get_height() - scale_y(2)))
-        slot_num_font = pygame.font.SysFont('Arial', scale_font_size(10))
-        slot_num_text = slot_num_font.render(str(i+1), True, (150, 153, 158))
-        inventory_surface.blit(slot_num_text, (slot_x + scale_x(3), slot_y + scale_y(3)))
-    win.blit(inventory_surface, (inventory_x, inventory_y))
+
 def redrawWindow():
     win.fill((255, 255, 255))
     grid_size = scale_x(25)
@@ -335,7 +263,6 @@ def redrawWindow():
             win.blit(msg_bg, (scaled_x + scaled_player_size//2 - msg_text.get_width()//2 - scale_x(5), scaled_y - scale_y(60)))
             win.blit(msg_text, (scaled_x + scaled_player_size//2 - msg_text.get_width()//2, scaled_y - scale_y(57)))
     draw_chat()
-    draw_inventory()
     current_time = time.time()
     if server_message['text'] and current_time < server_message['end_time']:
         popup_font = pygame.font.SysFont('Arial', scale_font_size(24), bold=True)
@@ -358,7 +285,7 @@ def redrawWindow():
                  scale_y(40)))
     pygame.display.update()
 def main():
-    global current_message, chat_active, width, height, win, history_index, temp_message, cursor_pos, chat_scroll, last_chat_activity, inventory_visible, selected_slot
+    global current_message, chat_active, width, height, win, history_index, temp_message, cursor_pos, chat_scroll, last_chat_activity
     run = True
     clock = pygame.time.Clock()
     movement_buffer = {"left": False, "right": False, "up": False, "down": False}
@@ -381,19 +308,6 @@ def main():
                     chat_scroll = max(0, min(len(chat_messages) - 10, chat_scroll - event.y))
                     last_chat_activity = time.time()
             if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_i and not chat_active:
-                    inventory_visible = not inventory_visible
-                    selected_slot = -1
-                if inventory_visible and not chat_active:
-                    if pygame.K_1 <= event.key <= pygame.K_6:
-                        slot_index = event.key - pygame.K_1
-                        if 0 <= slot_index < MAX_INVENTORY_SLOTS:
-                            if selected_slot == slot_index:
-                                if slot_index < len(inventory) and inventory[slot_index]:
-                                    s.sendall(f"/use {slot_index}\n".encode())
-                                selected_slot = -1
-                            else:
-                                selected_slot = slot_index
                 if event.key == pygame.K_RETURN:
                     if chat_active and current_message:
                         s.sendall(f"/chat {current_message}\n".encode())
@@ -414,9 +328,6 @@ def main():
                         current_message = ""
                         cursor_pos = 0
                         history_index = -1
-                    elif inventory_visible:
-                        inventory_visible = False
-                        selected_slot = -1
                 elif chat_active:
                     mods = pygame.key.get_mods()
                     if event.key == pygame.K_UP:
