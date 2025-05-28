@@ -1,10 +1,8 @@
 from game_server import GameServer
 from game_config import ip, port
-
 def main():
     server = GameServer()
     server.start_server()
-    
     try:
         while True:
             cmd = input("> ")
@@ -37,6 +35,5 @@ def main():
     except KeyboardInterrupt:
         print("\nShutting down server...")
         server.stop_server()
-
 if __name__ == "__main__":
     main()
